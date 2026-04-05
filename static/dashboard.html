@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Todo API - Дашборд</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Шапка -->
+        <header class="header">
+            <div class="header-left">
+                <h1>📝 Todo API</h1>
+                <span class="user-info" id="user-info"></span>
+            </div>
+            <div class="header-right">
+                <a href="/docs" target="_blank" class="btn btn-secondary">📚 Swagger UI</a>
+                <button onclick="logout()" class="btn btn-danger">Выйти</button>
+            </div>
+        </header>
+        
+        <div class="container">
+            <!-- Фильтры и поиск -->
+            <div class="filters-card">
+                <h2>🔍 Фильтры</h2>
+                <div class="filters-grid">
+                    <div class="filter-group">
+                        <label for="filter-status">Статус</label>
+                        <select id="filter-status" onchange="applyFilters()">
+                            <option value="">Все статусы</option>
+                            <option value="new">Новая</option>
+                            <option value="in_progress">В работе</option>
+                            <option value="done">Завершена</option>
+                            <option value="cancelled">Отменена</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="filter-priority">Приоритет</label>
+                        <select id="filter-priority" onchange="applyFilters()">
+                            <option value="">Все приоритеты</option>
+                            <option value="high">Высокий</option>
+                            <option value="medium">Средний</option>
+                            <option value="low">Низкий</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="search-input">Поиск</label>
+                        <input type="text" id="search-input" placeholder="Название или описание..." oninput="debounceSearch()">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="sort-select">Сортировка</label>
+                        <select id="sort-select" onchange="applyFilters()">
+                            <option value="created_at-desc">Дата создания (новые)</option>
+                            <option value="created_at-asc">Дата создания (старые)</option>
+                            <option value="title-asc">Название (А-Я)</option>
+                            <option value="title-desc">Название (Я-А)</option>
+                            <option value="priority-desc">Приоритет (высокий)</option>
+                            <option value="priority-asc">Приоритет (низкий)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Кнопка создания и список -->
+            <div class="todos-section">
+                <div class="todos-header">
+                    <h2>📋 Задачи</h2>
+                    <button onclick="openCreateModal()" class="btn btn-primary">+ Создать задачу</button>
+                </div>
+                
+                <div id="todos-list" class="todos-list"></div>
+                
+                <!-- Пагинация -->
+                <div id="pagination" class="pagination" style="display: none;">
+                    <button onclick="changePage(-1)" id="prev-btn" class="btn btn-secondary" disabled>← Назад</button>
+                    <span id="page-info" class="page-info"></span>
+                    <button onclick="changePage(1)" id="next-btn" class="btn btn-secondary" disabled>Вперёд →</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Модальное окно для создания/редактирования -->
+    <div id="todo-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Создать задачу</h3>
+                <button onclick="closeModal()" class="btn-close">&times;</button>
+            </div>
+            <form onsubmit="handleSaveTodo(event)">
+                <input type="hidden" id="todo-id">
+                <div class="form-group">
+                    <label for="todo-title">Название *</label>
+                    <input type="text" id="todo-title" required maxlength="200" placeholder="Введите название задачи">
+                </div>
+                <div class="form-group">
+                    <label for="todo-description">Описание</label>
+                    <textarea id="todo-description" rows="4" maxlength="1000" placeholder="Подробное описание задачи"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="todo-priority">Приоритет</label>
+                        <select id="todo-priority">
+                            <option value="low">Низкий</option>
+                            <option value="medium" selected>Средний</option>
+                            <option value="high">Высокий</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="status-group" style="display: none;">
+                        <label for="todo-status">Статус</label>
+                        <select id="todo-status">
+                            <option value="new">Новая</option>
+                            <option value="in_progress">В работе</option>
+                            <option value="done">Завершена</option>
+                            <option value="cancelled">Отменена</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" onclick="closeModal()" class="btn btn-secondary">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="message" class="toast" style="display: none;"></div>
+    
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

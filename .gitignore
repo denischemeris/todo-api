@@ -1,0 +1,11 @@
+.env
+.env.production
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+alembic/versions/*.pyc
+todo.db
+*.db
+static/lib/
+.DS_Store
