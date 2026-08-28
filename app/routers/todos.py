@@ -8,24 +8,55 @@ import math
 from app.database import get_db
 from app.models.todo_models import Todo, User, PriorityEnum, StatusEnum
 from app.schemas.todo_schemas import (
-    TodoCreate, TodoUpdate, TodoResponse, TodoListResponse
+    TodoCreate, TodoUpdate, TodoReplace, TodoResponse, TodoListResponse, ErrorResponse
 )
 from app.security import get_current_user
 
-router = APIRouter(prefix="/api/todos", tags=["Задачи"])
+router = APIRouter(prefix="/todos", tags=["Задачи"])
+
+
+# === Переиспользуемые описания ответов ===
+# Коды объявлены явно, чтобы Swagger описывал реальное поведение метода,
+# а не только успешный сценарий.
+
+RESPONSE_401 = {
+    "model": ErrorResponse,
+    "description": "Не аутентифицирован: токен отсутствует, истёк или подписан неверно",
+    "content": {"application/json": {"example": {"detail": "Неверные учетные данные"}}},
+}
+
+RESPONSE_404 = {
+    "model": ErrorResponse,
+    "description": (
+        "Задача не найдена. Тот же код возвращается для чужой задачи: "
+        "существование чужих данных наружу не раскрывается, поэтому здесь 404, а не 403"
+    ),
+    "content": {"application/json": {"example": {"detail": "Задача не найдена"}}},
+}
+
+RESPONSE_422 = {
+    "description": (
+        "Запрос не прошёл валидацию: неверный тип, формат или отсутствует обязательное поле. "
+        "Проблема в самом запросе, до бизнес-логики дело не доходит"
+    ),
+}
 
 
 @router.get(
     "",
     response_model=TodoListResponse,
-    summary="Список задач с фильтрацией, сортировкой и пагинацией",
+    summary="Получить список задач с фильтрацией, сортировкой и пагинацией",
+    responses={401: RESPONSE_401, 422: RESPONSE_422},
     description="""
     Возвращает список задач текущего пользователя с возможностями:
-    
+
     - **Пагинация**: page (номер страницы), page_size (размер страницы, макс 100)
     - **Фильтрация**: status (статус), priority (приоритет), search (поиск по названию/описанию)
     - **Сортировка**: sort_by (поле), sort_order (направление)
-    
+
+    Пустой результат это не ошибка: возвращается 200 и пустой массив `items` с `total: 0`.
+    Код 404 здесь не используется, коллекция существует всегда.
+
     **Пример SQL запроса:**
     ```sql
     SELECT id, title, description, status, priority, owner_id, created_at, updated_at
@@ -52,7 +83,7 @@ async def get_todos(
 ):
     """
     Получение списка задач текущего пользователя.
-    
+
     - **page**: номер страницы (начиная с 1)
     - **page_size**: количество задач на странице (1-100)
     - **status**: фильтр по статусу (new, in_progress, done, cancelled)
@@ -64,16 +95,16 @@ async def get_todos(
     # Базовый запрос
     query = select(Todo).where(Todo.owner_id == current_user.id)
     count_query = select(func.count()).select_from(Todo).where(Todo.owner_id == current_user.id)
-    
+
     # Применение фильтров
     if status_filter:
         query = query.where(Todo.status == status_filter)
         count_query = count_query.where(Todo.status == status_filter)
-    
+
     if priority:
         query = query.where(Todo.priority == priority)
         count_query = count_query.where(Todo.priority == priority)
-    
+
     if search:
         search_pattern = f"%{search}%"
         query = query.where(
@@ -88,7 +119,7 @@ async def get_todos(
                 Todo.description.ilike(search_pattern)
             )
         )
-    
+
     # Сортировка
     # Для priority используем кастомный порядок
     if sort_by == "priority":
@@ -102,23 +133,23 @@ async def get_todos(
     else:
         column = getattr(Todo, sort_by)
         order_clause = column.desc() if sort_order == "desc" else column.asc()
-    
+
     query = query.order_by(order_clause)
-    
+
     # Пагинация
     offset = (page - 1) * page_size
     query = query.limit(page_size).offset(offset)
-    
+
     # Выполнение запросов
     result = await db.execute(query)
     todos = result.scalars().all()
-    
+
     total_result = await db.execute(count_query)
     total = total_result.scalar()
-    
+
     # Расчет количества страниц
     pages = math.ceil(total / page_size) if total > 0 else 0
-    
+
     return {
         "items": todos,
         "total": total,
@@ -131,8 +162,12 @@ async def get_todos(
 @router.get(
     "/{todo_id}",
     response_model=TodoResponse,
-    summary="Получить задачу по ID",
-    description="Возвращает конкретную задачу по её ID"
+    summary="Получить задачу по идентификатору",
+    responses={401: RESPONSE_401, 404: RESPONSE_404, 422: RESPONSE_422},
+    description=(
+        "Возвращает конкретную задачу по её идентификатору. "
+        "Идентификатор стоит в пути, потому что адресует конкретный ресурс, а не фильтрует коллекцию."
+    )
 )
 async def get_todo(
     todo_id: int,
@@ -141,20 +176,20 @@ async def get_todo(
 ):
     """
     Получение отдельной задачи.
-    
+
     - **todo_id**: ID задачи
     """
     result = await db.execute(
         select(Todo).where(Todo.id == todo_id, Todo.owner_id == current_user.id)
     )
     todo = result.scalar_one_or_none()
-    
+
     if not todo:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Задача не найдена"
         )
-    
+
     return todo
 
 
@@ -163,7 +198,12 @@ async def get_todo(
     response_model=TodoResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Создать новую задачу",
-    description="Создает новую задачу для текущего пользователя"
+    responses={401: RESPONSE_401, 422: RESPONSE_422},
+    description=(
+        "Создаёт новую задачу для текущего пользователя. "
+        "Метод не идемпотентен: каждый вызов создаёт новую задачу. "
+        "Успех возвращается кодом 201, а не 200."
+    )
 )
 async def create_todo(
     todo_data: TodoCreate,
@@ -172,7 +212,7 @@ async def create_todo(
 ):
     """
     Создание новой задачи.
-    
+
     - **title**: название задачи (обязательно)
     - **description**: описание задачи (опционально)
     - **priority**: приоритет (low, medium, high)
@@ -183,19 +223,71 @@ async def create_todo(
         priority=todo_data.priority,
         owner_id=current_user.id
     )
-    
+
     db.add(new_todo)
     await db.flush()
     await db.refresh(new_todo)
-    
+
     return new_todo
 
 
 @router.put(
     "/{todo_id}",
     response_model=TodoResponse,
-    summary="Обновить задачу",
-    description="Обновляет данные задачи (только для владельца)"
+    summary="Заменить задачу целиком",
+    responses={401: RESPONSE_401, 404: RESPONSE_404, 422: RESPONSE_422},
+    description=(
+        "Полная замена задачи. Передать нужно все поля: title, description, status, priority. "
+        "Поле, которое не передали, не сохраняет прежнее значение, а даёт ошибку 422. "
+        "Метод идемпотентен: повторный вызов с тем же телом оставит ресурс в том же состоянии. "
+        "Чтобы изменить одно поле, используйте PATCH."
+    )
+)
+async def replace_todo(
+    todo_id: int,
+    todo_data: TodoReplace,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Полная замена задачи.
+
+    - **todo_id**: ID задачи
+    - тело запроса: все поля задачи целиком
+    """
+    result = await db.execute(
+        select(Todo).where(Todo.id == todo_id, Todo.owner_id == current_user.id)
+    )
+    todo = result.scalar_one_or_none()
+
+    if not todo:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Задача не найдена"
+        )
+
+    # Полная замена: перезаписываем все поля, а не только переданные
+    for field, value in todo_data.model_dump().items():
+        setattr(todo, field, value)
+
+    todo.updated_at = datetime.utcnow()
+
+    await db.flush()
+    await db.refresh(todo)
+
+    return todo
+
+
+@router.patch(
+    "/{todo_id}",
+    response_model=TodoResponse,
+    summary="Частично обновить задачу",
+    responses={401: RESPONSE_401, 404: RESPONSE_404, 422: RESPONSE_422},
+    description=(
+        "Частичное обновление: передаются только те поля, которые нужно изменить. "
+        "Остальные поля сохраняют текущее значение. "
+        "Типичный случай: смена статуса задачи одним полем status."
+    )
 )
 async def update_todo(
     todo_id: int,
@@ -204,35 +296,35 @@ async def update_todo(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Обновление задачи.
-    
+    Частичное обновление задачи.
+
     - **todo_id**: ID задачи
-    - **title**: новое название
-    - **description**: новое описание
-    - **status**: новый статус
-    - **priority**: новый приоритет
+    - **title**: новое название (опционально)
+    - **description**: новое описание (опционально)
+    - **status**: новый статус (опционально)
+    - **priority**: новый приоритет (опционально)
     """
     result = await db.execute(
         select(Todo).where(Todo.id == todo_id, Todo.owner_id == current_user.id)
     )
     todo = result.scalar_one_or_none()
-    
+
     if not todo:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Задача не найдена"
         )
-    
-    # Обновление полей
+
+    # Обновление только переданных полей
     update_data = todo_data.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(todo, field, value)
-    
+
     todo.updated_at = datetime.utcnow()
-    
+
     await db.flush()
     await db.refresh(todo)
-    
+
     return todo
 
 
@@ -240,7 +332,11 @@ async def update_todo(
     "/{todo_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Удалить задачу",
-    description="Удаляет задачу (только для владельца)"
+    responses={401: RESPONSE_401, 404: RESPONSE_404, 422: RESPONSE_422},
+    description=(
+        "Удаляет задачу владельца. Успех возвращается кодом 204 без тела ответа: возвращать нечего. "
+        "Повторный вызов для уже удалённой задачи вернёт 404, но состояние сервера при этом не изменится."
+    )
 )
 async def delete_todo(
     todo_id: int,
@@ -249,21 +345,21 @@ async def delete_todo(
 ):
     """
     Удаление задачи.
-    
+
     - **todo_id**: ID задачи
     """
     result = await db.execute(
         select(Todo).where(Todo.id == todo_id, Todo.owner_id == current_user.id)
     )
     todo = result.scalar_one_or_none()
-    
+
     if not todo:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Задача не найдена"
         )
-    
+
     await db.delete(todo)
     await db.flush()
-    
+
     return None

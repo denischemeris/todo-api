@@ -59,6 +59,23 @@ class TodoUpdate(BaseModel):
     priority: Optional[PriorityEnum] = None
 
 
+class TodoReplace(BaseModel):
+    """Полная замена задачи: PUT требует передать все поля целиком.
+
+    Поля, которые не переданы, не сохраняют прежнее значение, а считаются ошибкой.
+    Для изменения одного поля используйте PATCH.
+    """
+    title: str = Field(..., min_length=1, max_length=200, examples=["Обновлённое название"])
+    description: Optional[str] = Field(..., max_length=1000, examples=["Новое описание, допустимо null"])
+    status: StatusEnum = Field(..., examples=["in_progress"])
+    priority: PriorityEnum = Field(..., examples=["high"])
+
+
+class ErrorResponse(BaseModel):
+    """Стандартное тело ошибки"""
+    detail: str = Field(..., examples=["Задача не найдена"])
+
+
 class TodoResponse(BaseModel):
     id: int
     title: str

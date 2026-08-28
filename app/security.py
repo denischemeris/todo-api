@@ -15,7 +15,10 @@ from app.models.todo_models import User
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Bearer токен
-security = HTTPBearer()
+# auto_error=False: при отсутствии заголовка Authorization FastAPI по умолчанию
+# отдаёт 403, что неверно семантически. Разбираем случай сами и возвращаем 401:
+# 401 это "не поняли, кто пришёл", 403 это "поняли, но прав нет".
+security = HTTPBearer(auto_error=False)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -42,7 +45,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: AsyncSession = Depends(get_db)
 ) -> User:
     """Получение текущего пользователя из токена"""
@@ -52,6 +55,9 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
+    if credentials is None:
+        raise credentials_exception
+
     try:
         payload = jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
         user_id: Optional[str] = payload.get("sub")

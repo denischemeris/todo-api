@@ -4,10 +4,41 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models.todo_models import User
-from app.schemas.todo_schemas import UserCreate, UserLogin, UserResponse, TokenResponse
+from app.schemas.todo_schemas import UserCreate, UserLogin, UserResponse, TokenResponse, ErrorResponse
 from app.security import get_password_hash, verify_password, create_access_token, get_current_user
 
-router = APIRouter(prefix="/api/auth", tags=["Авторизация"])
+router = APIRouter(prefix="/auth", tags=["Авторизация"])
+
+
+# Коды объявлены явно: Swagger должен описывать и ошибочные сценарии, а не только успешный.
+
+RESPONSE_400_REGISTER = {
+    "model": ErrorResponse,
+    "description": (
+        "Бизнес-правило нарушено: email или имя пользователя уже заняты. "
+        "Сам запрос корректен, поэтому это не 422"
+    ),
+    "content": {"application/json": {"example": {"detail": "Пользователь с таким email уже существует"}}},
+}
+
+RESPONSE_401_LOGIN = {
+    "model": ErrorResponse,
+    "description": "Неверный email или пароль",
+    "content": {"application/json": {"example": {"detail": "Неверный email или пароль"}}},
+}
+
+RESPONSE_401_TOKEN = {
+    "model": ErrorResponse,
+    "description": "Не аутентифицирован: токен отсутствует, истёк или подписан неверно",
+    "content": {"application/json": {"example": {"detail": "Неверные учетные данные"}}},
+}
+
+RESPONSE_422 = {
+    "description": (
+        "Запрос не прошёл валидацию: неверный формат email, короткий пароль, "
+        "отсутствует обязательное поле"
+    ),
+}
 
 
 @router.post(
@@ -15,7 +46,11 @@ router = APIRouter(prefix="/api/auth", tags=["Авторизация"])
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Регистрация нового пользователя",
-    description="Создает нового пользователя и возвращает его данные"
+    responses={400: RESPONSE_400_REGISTER, 422: RESPONSE_422},
+    description=(
+        "Создаёт нового пользователя и возвращает его данные. "
+        "Успех возвращается кодом 201, а не 200."
+    )
 )
 async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     """
@@ -59,7 +94,11 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     "/login",
     response_model=TokenResponse,
     summary="Вход в систему",
-    description="Аутентифицирует пользователя и возвращает JWT токен"
+    responses={401: RESPONSE_401_LOGIN, 422: RESPONSE_422},
+    description=(
+        "Аутентифицирует пользователя и возвращает JWT токен. "
+        "Токен передаётся в заголовке Authorization: Bearer токен."
+    )
 )
 async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
     """
@@ -90,7 +129,8 @@ async def login(login_data: UserLogin, db: AsyncSession = Depends(get_db)):
     "/me",
     response_model=UserResponse,
     summary="Текущий пользователь",
-    description="Возвращает данные текущего авторизованного пользователя"
+    responses={401: RESPONSE_401_TOKEN},
+    description="Возвращает данные текущего пользователя по JWT токену"
 )
 async def get_me(current_user: User = Depends(get_current_user)):
     """

@@ -17,7 +17,7 @@ async function checkAuth() {
     }
     
     try {
-        const response = await fetch(`${API_URL}/api/auth/me`, {
+        const response = await fetch(`${API_URL}/api/v1/auth/me`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -84,7 +84,7 @@ async function loadTodos() {
     params.append('sort_order', sortOrder);
     
     try {
-        const response = await fetch(`${API_URL}/api/todos?${params}`, {
+        const response = await fetch(`${API_URL}/api/v1/todos?${params}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -229,7 +229,7 @@ async function openEditModal(todoId) {
     const token = getToken();
     
     try {
-        const response = await fetch(`${API_URL}/api/todos/${todoId}`, {
+        const response = await fetch(`${API_URL}/api/v1/todos/${todoId}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -278,7 +278,7 @@ async function handleSaveTodo(event) {
         
         if (todoId) {
             // Обновление
-            response = await fetch(`${API_URL}/api/todos/${todoId}`, {
+            response = await fetch(`${API_URL}/api/v1/todos/${todoId}`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -288,7 +288,7 @@ async function handleSaveTodo(event) {
             });
         } else {
             // Создание
-            response = await fetch(`${API_URL}/api/todos`, {
+            response = await fetch(`${API_URL}/api/v1/todos`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -321,7 +321,7 @@ async function deleteTodo(todoId) {
     const token = getToken();
     
     try {
-        const response = await fetch(`${API_URL}/api/todos/${todoId}`, {
+        const response = await fetch(`${API_URL}/api/v1/todos/${todoId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` }
         });
