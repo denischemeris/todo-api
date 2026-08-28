@@ -1,3 +1,18 @@
+// === Утилиты ===
+function formatApiError(payload, fallback) {
+    const detail = payload && payload.detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) {
+        const parts = detail.map(function (item) {
+            const loc = Array.isArray(item.loc) ? item.loc : [];
+            const field = loc[loc.length - 1];
+            return field && field !== 'body' ? field + ': ' + item.msg : item.msg;
+        });
+        if (parts.length) return parts.join('; ');
+    }
+    return fallback;
+}
+
 // === Global State ===
 const API_URL = window.location.origin;
 let currentPage = 1;
@@ -300,7 +315,7 @@ async function handleSaveTodo(event) {
         
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.detail || 'Ошибка сохранения');
+            throw new Error(formatApiError(error, 'Ошибка сохранения'));
         }
         
         showToast(todoId ? 'Задача обновлена' : 'Задача создана', 'success');
@@ -328,7 +343,7 @@ async function deleteTodo(todoId) {
         
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.detail || 'Ошибка удаления');
+            throw new Error(formatApiError(error, 'Ошибка удаления'));
         }
         
         showToast('Задача удалена', 'success');

@@ -18,7 +18,7 @@
                 <form onsubmit="handleLogin(event)">
                     <div class="form-group">
                         <label for="login-email">Email</label>
-                        <input type="email" id="login-email" required placeholder="john@example.com">
+                        <input type="email" id="login-email" required pattern="[^@\s]+@[^@\s]+\.[^@\s]+" title="Укажите адрес вида john@example.com: домен должен содержать точку" placeholder="john@example.com">
                     </div>
                     <div class="form-group">
                         <label for="login-password">Пароль</label>
@@ -40,7 +40,7 @@
                     </div>
                     <div class="form-group">
                         <label for="reg-email">Email</label>
-                        <input type="email" id="reg-email" required placeholder="john@example.com">
+                        <input type="email" id="reg-email" required pattern="[^@\s]+@[^@\s]+\.[^@\s]+" title="Укажите адрес вида john@example.com: домен должен содержать точку" placeholder="john@example.com">
                     </div>
                     <div class="form-group">
                         <label for="reg-password">Пароль</label>
@@ -68,6 +68,20 @@
     
     <script>
         const API_URL = window.location.origin;
+
+        function formatApiError(payload, fallback) {
+            const detail = payload && payload.detail;
+            if (typeof detail === 'string') return detail;
+            if (Array.isArray(detail)) {
+                const parts = detail.map(function (item) {
+                    const loc = Array.isArray(item.loc) ? item.loc : [];
+                    const field = loc[loc.length - 1];
+                    return field && field !== 'body' ? field + ': ' + item.msg : item.msg;
+                });
+                if (parts.length) return parts.join('; ');
+            }
+            return fallback;
+        }
         
         function toggleForm() {
             const loginForm = document.getElementById('login-form');
@@ -108,7 +122,7 @@
                 
                 if (!response.ok) {
                     const error = await response.json();
-                    throw new Error(error.detail || 'Ошибка входа');
+                    throw new Error(formatApiError(error, 'Ошибка входа'));
                 }
                 
                 const data = await response.json();
@@ -140,7 +154,7 @@
                 
                 if (!response.ok) {
                     const error = await response.json();
-                    throw new Error(error.detail || 'Ошибка регистрации');
+                    throw new Error(formatApiError(error, 'Ошибка регистрации'));
                 }
                 
                 showMessage('Регистрация успешна! Теперь войдите.', 'success');
