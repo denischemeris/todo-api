@@ -85,7 +85,7 @@ docker-compose down
 
 #### Регистрация
 ```bash
-POST /api/auth/register
+POST /api/v1/auth/register
 Content-Type: application/json
 
 {
@@ -97,7 +97,7 @@ Content-Type: application/json
 
 #### Вход
 ```bash
-POST /api/auth/login
+POST /api/v1/auth/login
 Content-Type: application/json
 
 {
@@ -114,7 +114,7 @@ Content-Type: application/json
 
 #### Текущий пользователь
 ```bash
-GET /api/auth/me
+GET /api/v1/auth/me
 Authorization: Bearer <token>
 ```
 
@@ -123,7 +123,7 @@ Authorization: Bearer <token>
 #### Список задач (с фильтрацией, сортировкой, пагинацией)
 
 ```bash
-GET /api/todos?page=1&page_size=10&status=in_progress&priority=high&search=отчет&sort_by=created_at&sort_order=desc
+GET /api/v1/todos?page=1&page_size=10&status=in_progress&priority=high&search=отчет&sort_by=created_at&sort_order=desc
 Authorization: Bearer <token>
 ```
 
@@ -149,7 +149,7 @@ Authorization: Bearer <token>
 
 #### Создать задачу
 ```bash
-POST /api/todos
+POST /api/v1/todos
 Authorization: Bearer <token>
 Content-Type: application/json
 
@@ -162,26 +162,45 @@ Content-Type: application/json
 
 #### Получить задачу
 ```bash
-GET /api/todos/{id}
+GET /api/v1/todos/{id}
 Authorization: Bearer <token>
 ```
 
-#### Обновить задачу
+#### Заменить задачу целиком (PUT)
+
+Передаются **все** поля. Поле, которое не передали, не сохраняет прежнее
+значение, а даёт ошибку 422. Метод идемпотентен.
+
 ```bash
-PUT /api/todos/{id}
+PUT /api/v1/todos/{id}
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
   "title": "Обновленное название",
+  "description": "Новое описание, допустимо null",
   "status": "done",
   "priority": "low"
 }
 ```
 
+#### Частично обновить задачу (PATCH)
+
+Передаются только изменяемые поля, остальные сохраняют текущее значение.
+
+```bash
+PATCH /api/v1/todos/{id}
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "status": "in_progress"
+}
+```
+
 #### Удалить задачу
 ```bash
-DELETE /api/todos/{id}
+DELETE /api/v1/todos/{id}
 Authorization: Bearer <token>
 ```
 
@@ -224,7 +243,7 @@ CREATE INDEX idx_todos_created_at ON todos(created_at);
 ### Пример: пагинация + фильтрация + сортировка
 
 ```sql
--- GET /api/todos?page=2&page_size=10&status=in_progress&priority=high
+-- GET /api/v1/todos?page=2&page_size=10&status=in_progress&priority=high
 SELECT id, title, description, status, priority, owner_id, created_at, updated_at
 FROM todos
 WHERE owner_id = 1
@@ -243,7 +262,7 @@ WHERE owner_id = 1
 ### Пример: кастомная сортировка по приоритету
 
 ```sql
--- GET /api/todos?sort_by=priority&sort_order=desc
+-- GET /api/v1/todos?sort_by=priority&sort_order=desc
 SELECT id, title, status, priority, created_at
 FROM todos
 WHERE owner_id = 1
@@ -394,23 +413,23 @@ server {
 
 ```bash
 # Регистрация
-curl -X POST http://localhost:8000/api/auth/register \
+curl -X POST http://localhost:8000/api/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"username":"test","email":"test@example.com","password":"test123"}'
 
 # Вход
-curl -X POST http://localhost:8000/api/auth/login \
+curl -X POST http://localhost:8000/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"test@example.com","password":"test123"}'
 
 # Создать задачу (с токеном)
-curl -X POST http://localhost:8000/api/todos \
+curl -X POST http://localhost:8000/api/v1/todos \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"title":"Тестовая задача","priority":"high"}'
 
 # Список задач
-curl -X GET "http://localhost:8000/api/todos?page=1&page_size=10" \
+curl -X GET "http://localhost:8000/api/v1/todos?page=1&page_size=10" \
   -H "Authorization: Bearer <token>"
 ```
 
@@ -426,6 +445,82 @@ curl -X GET "http://localhost:8000/api/todos?page=1&page_size=10" \
 6. JOIN с таблицей пользователей
 7. Агрегация и группировка
 8. Индексы для оптимизации
+
+## 🔢 Версионирование API
+
+Актуальный префикс: `/api/v1/...`. Версия стоит в начале пути, чтобы
+несовместимые изменения можно было выпустить как `/api/v2`, не ломая
+существующих клиентов.
+
+Старые пути без версии (`/api/todos`, `/api/auth`) продолжают работать ради
+совместимости, но считаются устаревшими и скрыты из Swagger.
+
+## 📟 Коды ответов
+
+| Код | Когда |
+|---|---|
+| 200 | Успешное чтение или обновление |
+| 201 | Ресурс создан (POST) |
+| 204 | Успешное удаление, тела ответа нет |
+| 400 | Нарушено бизнес-правило: email или имя пользователя заняты |
+| 401 | Не аутентифицирован: токена нет, истёк или подписан неверно |
+| 404 | Ресурс не найден. Чужая задача тоже даёт 404, а не 403: существование чужих данных наружу не раскрывается |
+| 422 | Запрос не прошёл валидацию: неверный тип, формат, нет обязательного поля |
+
+Пустой список это **не** ошибка: `GET /api/v1/todos` вернёт 200 и пустой
+массив `items` с `total: 0`. Код 404 для коллекций не используется.
+
+## 🚢 Деплой
+
+Продакшен: http://109.73.201.197:8000, каталог на сервере `/opt/todo-api`,
+контейнер `todo-app`, база PostgreSQL `todo_api_db` в сети `pg-network`.
+
+### Автоматический деплой (основной путь)
+
+Push в `master` запускает GitHub Actions (`.github/workflows/deploy.yml`):
+заход по ssh на сервер и запуск `scripts/deploy-on-server.sh`.
+
+Скрипт синхронизирует рабочую копию с `origin/master`, докачивает файлы
+Swagger UI и ReDoc, пересобирает контейнер и проверяет результат:
+приложение отвечает на `/openapi.json`, а `GET /api/v1/todos` без токена
+даёт 401. Если проверка не проходит, job падает и печатает логи контейнера.
+
+Секреты репозитория (Settings → Secrets and variables → Actions):
+
+| Секрет | Значение |
+|---|---|
+| `SSH_HOST` | адрес сервера |
+| `SSH_USER` | пользователь ssh |
+| `SSH_PRIVATE_KEY` | приватный ключ, публичная часть в `~/.ssh/authorized_keys` на сервере |
+| `SSH_PORT` | необязательно, по умолчанию 22 |
+
+### Ручной деплой
+
+```bash
+ssh root@109.73.201.197 "bash /opt/todo-api/scripts/deploy-on-server.sh"
+```
+
+### Что лежит только на сервере
+
+Эти файлы не в репозитории, деплой их не трогает:
+
+- `.env` и `.env.production` — параметры БД и JWT-секрет
+- `docker-compose.prod.yml` — прод-конфигурация контейнера
+- `static/lib/` — swagger-ui-bundle.js, swagger-ui.css, redoc.standalone.js
+
+`Dockerfile` копирует `static/` в образ, поэтому без файлов из `static/lib`
+страница `/docs` соберётся пустой. Скрипт деплоя докачивает их сам, если их нет.
+
+### Грабли, на которые уже наступали
+
+- **Незакреплённые зависимости.** `EmailStr` требует `email-validator`, а
+  `passlib 1.7.4` несовместим с `bcrypt` 4.1 и новее. Обе версии закреплены
+  в `requirements.txt`. Старый образ работал на случайно подобранных версиях,
+  и пересборка это вскрыла: приложение уходило в рестарт-цикл, а регистрация
+  падала с 500.
+- **Проверять надо не код возврата docker, а поведение приложения.**
+  Контейнер стартует и при сломанных зависимостях: `docker compose up`
+  отработает успешно, а сервис будет перезапускаться по кругу.
 
 ## 🤝 Вклад
 
