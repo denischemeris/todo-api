@@ -6,14 +6,42 @@ from enum import Enum
 
 # === User Schemas ===
 
+# Маска для документации: EmailStr требует точку в домене, поэтому john@mail
+# отклоняется с 422. В схеме это видно только через pattern.
+EMAIL_PATTERN = r"[^@\s]+@[^@\s]+\.[^@\s]+"
+EMAIL_DESCRIPTION = "Адрес вида john@example.com: домен обязан содержать точку"
+
+
 class UserCreate(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50, examples=["johndoe"])
-    email: EmailStr = Field(..., examples=["john@example.com"])
-    password: str = Field(..., min_length=6, max_length=100, examples=["securepass123"])
+    username: str = Field(
+        ...,
+        min_length=3,
+        max_length=50,
+        examples=["johndoe"],
+        description="От 3 до 50 символов",
+    )
+    email: EmailStr = Field(
+        ...,
+        examples=["john@example.com"],
+        description=EMAIL_DESCRIPTION,
+        json_schema_extra={"pattern": EMAIL_PATTERN},
+    )
+    password: str = Field(
+        ...,
+        min_length=6,
+        max_length=100,
+        examples=["securepass123"],
+        description="От 6 до 100 символов",
+    )
 
 
 class UserLogin(BaseModel):
-    email: EmailStr = Field(..., examples=["john@example.com"])
+    email: EmailStr = Field(
+        ...,
+        examples=["john@example.com"],
+        description=EMAIL_DESCRIPTION,
+        json_schema_extra={"pattern": EMAIL_PATTERN},
+    )
     password: str = Field(..., examples=["securepass123"])
 
 
