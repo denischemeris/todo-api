@@ -4,11 +4,11 @@ name: Deploy
 # который забирает свежий код из этого же репозитория и пересобирает контейнер.
 #
 # Нужные секреты репозитория (Settings -> Secrets and variables -> Actions):
-#   SSH_HOST        адрес сервера
-#   SSH_USER        пользователь ssh
-#   SSH_PRIVATE_KEY приватный ключ, публичная часть которого лежит
-#                   в ~/.ssh/authorized_keys на сервере
-#   SSH_PORT        необязательно, по умолчанию 22
+#   DEPLOY_HOST        адрес сервера
+#   DEPLOY_USER        пользователь ssh
+#   DEPLOY_KEY         приватный ключ, публичная часть которого лежит
+#                      в ~/.ssh/authorized_keys на сервере
+#   DEPLOY_PORT        необязательно, по умолчанию 22
 
 on:
   push:
@@ -32,9 +32,9 @@ jobs:
       - name: Проверить наличие секретов
         run: |
           missing=""
-          [ -n "${{ secrets.SSH_HOST }}" ] || missing="$missing SSH_HOST"
-          [ -n "${{ secrets.SSH_USER }}" ] || missing="$missing SSH_USER"
-          [ -n "${{ secrets.SSH_PRIVATE_KEY }}" ] || missing="$missing SSH_PRIVATE_KEY"
+          [ -n "${{ secrets.DEPLOY_HOST }}" ] || missing="$missing DEPLOY_HOST"
+          [ -n "${{ secrets.DEPLOY_USER }}" ] || missing="$missing DEPLOY_USER"
+          [ -n "${{ secrets.DEPLOY_KEY }}" ] || missing="$missing DEPLOY_KEY"
           if [ -n "$missing" ]; then
             echo "Не заданы секреты репозитория:$missing"
             echo "Добавьте их в Settings -> Secrets and variables -> Actions"
@@ -42,19 +42,19 @@ jobs:
           fi
 
       - name: Деплой по ssh
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
           command_timeout: 12m
           script: |
             bash /opt/todo-api/scripts/deploy-on-server.sh
 
       - name: Проверить, что сервис отвечает снаружи
         run: |
-          BASE="http://${{ secrets.SSH_HOST }}:8000"
+          BASE="http://${{ secrets.DEPLOY_HOST }}:8000"
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE/openapi.json" || echo 000)
           echo "GET /openapi.json -> $code"
           [ "$code" = "200" ] || exit 1
