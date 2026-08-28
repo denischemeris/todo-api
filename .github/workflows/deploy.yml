@@ -1,0 +1,71 @@
+name: Deploy
+
+# Выкатывает master на сервер: заходит по ssh и запускает scripts/deploy-on-server.sh,
+# который забирает свежий код из этого же репозитория и пересобирает контейнер.
+#
+# Нужные секреты репозитория (Settings -> Secrets and variables -> Actions):
+#   SSH_HOST        адрес сервера
+#   SSH_USER        пользователь ssh
+#   SSH_PRIVATE_KEY приватный ключ, публичная часть которого лежит
+#                   в ~/.ssh/authorized_keys на сервере
+#   SSH_PORT        необязательно, по умолчанию 22
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - "README.md"
+      - "docs/**"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Выкатить на сервер
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Проверить наличие секретов
+        run: |
+          missing=""
+          [ -n "${{ secrets.SSH_HOST }}" ] || missing="$missing SSH_HOST"
+          [ -n "${{ secrets.SSH_USER }}" ] || missing="$missing SSH_USER"
+          [ -n "${{ secrets.SSH_PRIVATE_KEY }}" ] || missing="$missing SSH_PRIVATE_KEY"
+          if [ -n "$missing" ]; then
+            echo "Не заданы секреты репозитория:$missing"
+            echo "Добавьте их в Settings -> Secrets and variables -> Actions"
+            exit 1
+          fi
+
+      - name: Деплой по ssh
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          command_timeout: 12m
+          script: |
+            bash /opt/todo-api/scripts/deploy-on-server.sh
+
+      - name: Проверить, что сервис отвечает снаружи
+        run: |
+          BASE="http://${{ secrets.SSH_HOST }}:8000"
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE/openapi.json" || echo 000)
+          echo "GET /openapi.json -> $code"
+          [ "$code" = "200" ] || exit 1
+
+          docs=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$BASE/docs" || echo 000)
+          echo "GET /docs         -> $docs"
+          [ "$docs" = "200" ] || exit 1
+
+          # PATCH появился во второй версии контракта: если его нет,
+          # значит выкатился старый код
+          curl -s --max-time 10 "$BASE/openapi.json" \
+            | grep -q '"/api/v1/todos/{todo_id}"' || {
+              echo "В контракте нет /api/v1/todos/{todo_id}"; exit 1; }
+          echo "Контракт на месте"

@@ -9,3 +9,5 @@ todo.db
 *.db
 static/lib/
 .DS_Store
+# лежит только на сервере, содержит параметры БД и JWT-секрет
+docker-compose.prod.yml
